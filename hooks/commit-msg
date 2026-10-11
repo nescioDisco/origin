@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# commit-msg hook: strips AI attribution from commit messages
+#
+# Installed by install-hooks.sh — not active by default.
+# To uninstall: rm .git/hooks/commit-msg
+#
+# Removes:
+#   Co-Authored-By: ... Claude ... lines
+#   Claude-Session: ... lines
+#   "🤖 Generated with" lines
+#   Inline https://claude.ai/code/session_... URLs
+# Then collapses any orphaned trailing blank lines.
+
+COMMIT_MSG_FILE="$1"
+
+if [ -z "$COMMIT_MSG_FILE" ] || [ ! -f "$COMMIT_MSG_FILE" ]; then
+  exit 0
+fi
+
+# Work on a temp file so we never leave the message in a broken state
+TMPFILE="$(mktemp)"
+trap 'rm -f "$TMPFILE"' EXIT
+
+cp "$COMMIT_MSG_FILE" "$TMPFILE"
+
+# Strip matching lines and inline session URLs
+perl -i \
+  -e 'while (<>) {' \
+  -e '  next if /^Co-Authored-By:.*[Cc]laude/;' \
+  -e '  next if /^Claude-Session:/;' \
+  -e '  next if /\x{1F916}\s*Generated with/u;' \
+  -e '  s|https://claude\.ai/code/session_[A-Za-z0-9]+||g;' \
+  -e '  print;' \
+  -e '}' \
+  "$TMPFILE"
+
+# Remove trailing blank lines (keep at most one blank line at end)
+perl -i -0777 -e 's/\n{3,}$/\n/s; s/\n{2,}$/\n/s' "$TMPFILE"
+
+cp "$TMPFILE" "$COMMIT_MSG_FILE"
+
+exit 0
